@@ -1,0 +1,5044 @@
+// ==UserScript==
+// @name         Onyx: Discord Translator Ultimate PRO
+// @namespace    http://tampermonkey.net/
+// @version      43.0
+// @description  Onyx Translator for Discord - PRO translator suite
+// @author       Fer3on_Mod
+// @match        https://discord.com/*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=deepl.com
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_xmlhttpRequest
+// @connect      translate.googleapis.com
+// ==/UserScript==
+
+(function () {
+    "use strict";
+
+    /* =========================================================
+       LANGUAGES
+       ========================================================= */
+
+    const LANGUAGES = {
+        ar:"Arabic",en:"English",ru:"Russian",tr:"Turkish",fr:"French",
+        de:"German",es:"Spanish",it:"Italian",pt:"Portuguese",
+        "zh-CN":"Chinese (Simp)",ja:"Japanese",hi:"Hindi",pl:"Polish",
+        uk:"Ukrainian",ko:"Korean",id:"Indonesian",vi:"Vietnamese",
+        af:"Afrikaans",sq:"Albanian",am:"Amharic",hy:"Armenian",
+        az:"Azerbaijani",eu:"Basque",be:"Belarusian",bn:"Bengali",
+        bs:"Bosnian",bg:"Bulgarian",ca:"Catalan",ceb:"Cebuano",
+        ny:"Chichewa","zh-TW":"Chinese (Trad)",co:"Corsican",
+        hr:"Croatian",cs:"Czech",da:"Danish",nl:"Dutch",
+        eo:"Esperanto",et:"Estonian",tl:"Filipino",fi:"Finnish",
+        fy:"Frisian",gl:"Galician",ka:"Georgian",el:"Greek",
+        gu:"Gujarati",ht:"Haitian Creole",ha:"Hausa",haw:"Hawaiian",
+        iw:"Hebrew",hmn:"Hmong",hu:"Hungarian",is:"Icelandic",
+        ig:"Igbo",ga:"Irish",jw:"Javanese",kn:"Kannada",
+        kk:"Kazakh",km:"Khmer",ku:"Kurdish",ky:"Kyrgyz",
+        lo:"Lao",la:"Latin",lv:"Latvian",lt:"Lithuanian",
+        lb:"Luxembourgish",mk:"Macedonian",mg:"Malagasy",
+        ms:"Malay",ml:"Malayalam",mt:"Maltese",mi:"Maori",
+        mr:"Marathi",mn:"Mongolian",my:"Myanmar",ne:"Nepali",
+        no:"Norwegian",ps:"Pashto",fa:"Persian",pa:"Punjabi",
+        ro:"Romanian",sm:"Samoan",gd:"Scots Gaelic",sr:"Serbian",
+        st:"Sesotho",sn:"Shona",sd:"Sindhi",si:"Sinhala",
+        sk:"Slovak",sl:"Slovenian",so:"Somali",su:"Sundanese",
+        sw:"Swahili",sv:"Swedish",tg:"Tajik",ta:"Tamil",
+        te:"Telugu",th:"Thai",ur:"Urdu",uz:"Uzbek",cy:"Welsh",
+        xh:"Xhosa",yi:"Yiddish",yo:"Yoruba",zu:"Zulu"
+    };
+
+    /* =========================================================
+       CONFIG
+       ========================================================= */
+
+    const config = {
+        read: GM_getValue("akram_read","ar"),
+        write: GM_getValue("akram_write","en"),
+        enabled: GM_getValue("akram_enable",true),
+        smart: GM_getValue("akram_smart",true),
+        live: GM_getValue("akram_auto_in",false),
+        typing: GM_getValue("akram_typing",false),
+        protection: GM_getValue("akram_protect",true),
+        quickSelect: GM_getValue("akram_quick_select",true),
+        history: GM_getValue("akram_history_enabled",true),
+        stats: GM_getValue("akram_stats_enabled",true),
+        userMemory: GM_getValue("akram_user_memory",true),
+        multi: GM_getValue("akram_multi_enabled",false),
+        multiTargets: GM_getValue("akram_multi_targets",["ar","en","es"]),
+        accent: GM_getValue("akram_accent","#00DC82"),
+        style: GM_getValue("akram_style","default"),
+        ttsRate: GM_getValue("akram_tts_rate",0.9),
+        ttsVolume: GM_getValue("akram_tts_volume",1),
+        status: GM_getValue("akram_status",true)
+    };
+
+    const state = {
+        cache:new Map(),
+        history:GM_getValue("akram_history",[]),
+        favorites:GM_getValue("akram_favorites",[]),
+        users:GM_getValue("akram_user_languages",{}),
+        stats:GM_getValue(
+            "akram_stats",
+            {
+                translations:0,
+                incoming:0,
+                outgoing:0,
+                voice:0,
+                selected:0,
+                clipboard:0
+            }
+        ),
+        queue:[],
+        processing:false,
+        outgoing:false,
+        typingTimer:null,
+        recognition:null,
+        status:"Ready"
+    };
+
+    function save(key,value){
+        GM_setValue(key,value);
+    }
+
+    function sync(key,value){
+        const names = {
+            read:"akram_read",
+            write:"akram_write",
+            enabled:"akram_enable",
+            smart:"akram_smart",
+            live:"akram_auto_in",
+            typing:"akram_typing",
+            protection:"akram_protect",
+            quickSelect:"akram_quick_select",
+            history:"akram_history_enabled",
+            stats:"akram_stats_enabled",
+            userMemory:"akram_user_memory",
+            multi:"akram_multi_enabled",
+            multiTargets:"akram_multi_targets",
+            accent:"akram_accent",
+            style:"akram_style",
+            ttsRate:"akram_tts_rate",
+            ttsVolume:"akram_tts_volume",
+            status:"akram_status"
+        };
+
+        if(names[key]){
+            save(names[key],value);
+        }
+    }
+
+    /* =========================================================
+       ICONS
+       ========================================================= */
+
+    const I = {
+        logo:`
+        <svg viewBox="0 0 24 24">
+            <path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0014.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56L1.58 17.58 4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
+        </svg>`,
+
+        translate:`
+        <svg viewBox="0 0 24 24">
+            <path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0014.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35c-.93-1.03-1.7-2.16-2.31-3.35h-2c.73 1.63 1.73 3.17 2.98 4.56L2.38 17.58 4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
+        </svg>`,
+
+        mic:`
+        <svg viewBox="0 0 24 24">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>`,
+
+        volume:`
+        <svg viewBox="0 0 24 24">
+            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+        </svg>`,
+
+        gear:`
+        <svg viewBox="0 0 24 24">
+            <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.488.488 0 00-.59.22L2.9 8.87a.49.49 0 00.12.61l2.03 1.58c-.05.3-.08.62-.08.94 0 .33.03.65.08.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.13.22.39.31.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.04.24.23.41.47.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.03-1.58zM12 15.6a3.6 3.6 0 110-7.2 3.6 3.6 0 010 7.2z"/>
+        </svg>`,
+
+        history:`
+        <svg viewBox="0 0 24 24">
+            <path d="M13 3a9 9 0 1 1-7.06 3.42L4 5v5h5L7.35 8.35A7 7 0 1 0 13 5V3zm-1 5h2v5h-4v-2h2V8z"/>
+        </svg>`,
+
+        star:`
+        <svg viewBox="0 0 24 24">
+            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+        </svg>`,
+
+        clipboard:`
+        <svg viewBox="0 0 24 24">
+            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+        </svg>`,
+
+        shield:`
+        <svg viewBox="0 0 24 24">
+            <path d="M12 2l7 3v6c0 5-3.5 9.74-7 11-3.5-1.26-7-6-7-11V5l7-3zm0 4.1L7 8v3c0 3.58 2.34 7.06 5 8.28 2.66-1.22 5-4.7 5-8.28V8l-5-1.9z"/>
+        </svg>`,
+
+        search:`
+        <svg viewBox="0 0 24 24">
+            <path d="M9.5 3a6.5 6.5 0 1 0 4.05 11.59l4.43 4.43 1.41-1.41-4.43-4.43A6.5 6.5 0 0 0 9.5 3zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9z"/>
+        </svg>`,
+
+        back:`
+        <svg viewBox="0 0 24 24">
+            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+        </svg>`,
+
+        telegram:`
+        <svg viewBox="0 0 24 24">
+            <path d="M21.9 3.3c.3-1.1-.4-1.5-1.3-1.1L2.9 9.3c-1.2.5-1.2 1.2-.2 1.5l4.5 1.4 1.7 5.3c.2.6.4.7.8.3l2.2-2.1 4.5 3.3c.8.5 1.4.2 1.6-.7l3.3-14.9zM9.7 16.8l-.7-4.5 9.8-6.2c.4-.2.8-.1.5.2l-8 7.2-.3 3.3c-.1.4-.2.4-.3 0z"/>
+        </svg>`,
+
+        youtube:`
+        <svg viewBox="0 0 24 24">
+            <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.5v-7l6.4 3.5-6.4 3.5z"/>
+        </svg>`,
+
+        discord:`
+        <svg viewBox="0 0 24 24">
+            <path d="M19.54 5.23A16.07 16.07 0 0 0 15.6 4l-.48 1a14.67 14.67 0 0 0-6.24 0L8.4 4a16.07 16.07 0 0 0-3.94 1.23C1.97 8.76 1.29 12.2 1.58 15.59a16.4 16.4 0 0 0 5.02 2.53l1.21-1.67c-.67-.25-1.3-.57-1.9-.96l.46-.35c3.67 1.69 8.01 1.69 11.65 0l.46.35c-.6.39-1.24.71-1.9.96l1.21 1.67a16.4 16.4 0 0 0 5.02-2.53c.34-3.93-.58-7.34-3.27-10.36zM8.02 14.02c-.9 0-1.63-.82-1.63-1.82s.71-1.82 1.63-1.82 1.64.82 1.64 1.82-.72 1.82-1.64 1.82zm7.96 0c-.9 0-1.63-.82-1.63-1.82s.71-1.82 1.63-1.82 1.64.82 1.64 1.82-.72 1.82-1.64 1.82z"/>
+        </svg>`
+    };
+
+    /* =========================================================
+       STYLES
+       ========================================================= */
+
+    const style = document.createElement("style");
+
+    style.textContent = `
+        :root{
+            --onyx-accent:${config.accent};
+        }
+
+        #onyx-root,
+        #onyx-root *{
+            box-sizing:border-box;
+        }
+
+        #onyx-root{
+            font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+        }
+
+        #tg-master-panel{
+            position:fixed;
+            right:20px;
+            bottom:80px;
+            width:310px;
+            background:rgba(18,18,18,.97);
+            border:1px solid rgba(255,255,255,.08);
+            border-radius:22px;
+            color:#fff;
+            z-index:2147483647;
+            box-shadow:
+                0 30px 80px rgba(0,0,0,.7),
+                0 0 0 1px rgba(255,255,255,.04) inset;
+            backdrop-filter:blur(24px);
+            -webkit-backdrop-filter:blur(24px);
+            overflow:hidden;
+            display:none;
+        }
+
+        .onyx-header{
+            height:58px;
+            padding:0 16px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            border-bottom:1px solid rgba(255,255,255,.07);
+        }
+
+        .onyx-brand{
+            display:flex;
+            align-items:center;
+            gap:8px;
+            font-size:14px;
+            font-weight:800;
+        }
+
+        .onyx-brand svg{
+            width:22px;
+            height:22px;
+            fill:var(--onyx-accent);
+        }
+
+        .onyx-badge{
+            font-size:9px;
+            font-weight:800;
+            color:#000;
+            background:var(--onyx-accent);
+            padding:2px 6px;
+            border-radius:6px;
+        }
+
+        .onyx-close,
+        .onyx-back{
+            width:30px;
+            height:30px;
+            display:grid;
+            place-items:center;
+            border:1px solid rgba(255,255,255,.07);
+            background:rgba(255,255,255,.04);
+            border-radius:9px;
+            color:#aaa;
+            cursor:pointer;
+        }
+
+        .onyx-close:hover{
+            color:#ff5555;
+            background:rgba(255,70,70,.12);
+        }
+
+        .onyx-back svg{
+            width:15px;
+            height:15px;
+            fill:currentColor;
+        }
+
+        .onyx-page{
+            padding:16px;
+        }
+
+        .onyx-hidden{
+            display:none!important;
+        }
+
+        .onyx-langbar{
+            display:grid;
+            grid-template-columns:1fr auto 1fr;
+            gap:8px;
+            align-items:center;
+            background:rgba(255,255,255,.045);
+            border:1px solid rgba(255,255,255,.07);
+            padding:8px;
+            border-radius:14px;
+            margin-bottom:10px;
+        }
+
+        .onyx-langbox{
+            position:relative;
+        }
+
+        .onyx-langlabel{
+            font-size:8px;
+            color:#888;
+            text-align:center;
+            text-transform:uppercase;
+            margin-bottom:3px;
+            font-weight:800;
+        }
+
+        .onyx-select{
+            font-size:11px;
+            color:#fff;
+            text-align:center;
+            padding:7px 4px;
+            border-radius:8px;
+            cursor:pointer;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+        }
+
+        .onyx-select:hover{
+            background:rgba(255,255,255,.05);
+        }
+
+        .onyx-swap{
+            color:#777;
+            font-size:10px;
+            cursor:pointer;
+        }
+
+        .onyx-swap:hover{
+            color:var(--onyx-accent);
+        }
+
+        .onyx-dropdown{
+            position:absolute;
+            top:calc(100% + 4px);
+            left:0;
+            width:100%;
+            max-height:220px;
+            overflow:auto;
+            background:#1f1f1f;
+            border:1px solid var(--onyx-accent);
+            border-radius:11px;
+            padding:5px;
+            display:none;
+            z-index:2147483647;
+            box-shadow:0 12px 30px rgba(0,0,0,.8);
+        }
+
+        .onyx-dropdown.show{
+            display:block;
+        }
+
+        .onyx-search{
+            width:100%;
+            padding:8px;
+            border:1px solid rgba(255,255,255,.07);
+            border-radius:7px;
+            background:rgba(255,255,255,.04);
+            color:#fff;
+            outline:none;
+            font-size:10px;
+            margin-bottom:4px;
+        }
+
+        .onyx-opt{
+            padding:7px 8px;
+            border-radius:6px;
+            font-size:10px;
+            color:#ccc;
+            cursor:pointer;
+        }
+
+        .onyx-opt:hover,
+        .onyx-opt.sel{
+            background:var(--onyx-accent);
+            color:#000;
+            font-weight:800;
+        }
+
+        .onyx-btn{
+            width:100%;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            gap:7px;
+            border:1px solid rgba(255,255,255,.07);
+            background:rgba(255,255,255,.04);
+            color:#ddd;
+            border-radius:10px;
+            padding:10px;
+            font-size:10px;
+            font-weight:700;
+            cursor:pointer;
+        }
+
+        .onyx-btn:hover{
+            background:rgba(255,255,255,.07);
+            color:#fff;
+        }
+
+        .onyx-btn svg{
+            width:14px;
+            height:14px;
+            fill:currentColor;
+        }
+
+        .onyx-grid2{
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:6px;
+        }
+
+        .onyx-settings{
+            margin-top:8px;
+            display:flex;
+            flex-direction:column;
+        }
+
+        .onyx-setting{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:9px;
+            padding:8px 0;
+            border-bottom:1px solid rgba(255,255,255,.035);
+        }
+
+        .onyx-setting-left{
+            display:flex;
+            align-items:center;
+            gap:9px;
+            min-width:0;
+        }
+
+        .onyx-setting-icon{
+            width:30px;
+            height:30px;
+            flex:0 0 30px;
+            display:grid;
+            place-items:center;
+            border-radius:9px;
+            background:rgba(255,255,255,.045);
+            color:#ddd;
+        }
+
+        .onyx-setting-icon svg{
+            width:15px;
+            height:15px;
+            fill:currentColor;
+        }
+
+        .onyx-setting-title{
+            font-size:10px;
+            font-weight:700;
+            color:#eee;
+        }
+
+        .onyx-setting-sub{
+            font-size:8px;
+            color:#777;
+            margin-top:2px;
+        }
+
+        .onyx-switch{
+            width:38px;
+            height:20px;
+            flex:0 0 38px;
+            position:relative;
+        }
+
+        .onyx-switch input{
+            opacity:0;
+            width:0;
+            height:0;
+        }
+
+        .onyx-slider{
+            position:absolute;
+            inset:0;
+            background:#333;
+            border-radius:20px;
+            cursor:pointer;
+        }
+
+        .onyx-slider:before{
+            content:"";
+            position:absolute;
+            width:14px;
+            height:14px;
+            left:3px;
+            top:3px;
+            background:#fff;
+            border-radius:50%;
+            transition:.2s;
+        }
+
+        .onyx-switch input:checked+.onyx-slider{
+            background:var(--onyx-accent);
+        }
+
+        .onyx-switch input:checked+.onyx-slider:before{
+            transform:translateX(18px);
+        }
+
+        .onyx-status{
+            display:flex;
+            align-items:center;
+            gap:6px;
+            font-size:8px;
+            color:#777;
+            margin-top:8px;
+        }
+
+        .onyx-dot{
+            width:6px;
+            height:6px;
+            border-radius:50%;
+            background:var(--onyx-accent);
+            box-shadow:0 0 7px var(--onyx-accent);
+        }
+
+        .onyx-footer{
+            text-align:center;
+            color:#666;
+            font-size:8px;
+            margin-top:11px;
+        }
+
+        .onyx-dev{
+            color:var(--onyx-accent);
+            font-weight:800;
+            text-decoration:none;
+            cursor:pointer;
+        }
+
+        .onyx-dev:hover{
+            text-shadow:0 0 8px var(--onyx-accent);
+        }
+
+        .onyx-subheader{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            margin-bottom:10px;
+        }
+
+        .onyx-title{
+            font-size:12px;
+            font-weight:800;
+            color:#eee;
+        }
+
+        .onyx-card{
+            padding:10px;
+            border:1px solid rgba(255,255,255,.07);
+            border-radius:11px;
+            background:rgba(255,255,255,.025);
+            margin-bottom:8px;
+        }
+
+        .onyx-card-title{
+            font-size:10px;
+            color:#eee;
+            font-weight:800;
+            margin-bottom:7px;
+        }
+
+        .onyx-small{
+            color:#777;
+            font-size:8px;
+            line-height:1.45;
+        }
+
+        .onyx-input{
+            width:100%;
+            padding:8px;
+            background:rgba(255,255,255,.04);
+            border:1px solid rgba(255,255,255,.07);
+            color:#fff;
+            border-radius:8px;
+            outline:none;
+            font-size:9px;
+        }
+
+        .onyx-mini{
+            border:1px solid rgba(255,255,255,.07);
+            background:rgba(255,255,255,.04);
+            color:#aaa;
+            border-radius:7px;
+            padding:7px 8px;
+            font-size:8px;
+            cursor:pointer;
+        }
+
+        .onyx-mini:hover{
+            color:var(--onyx-accent);
+        }
+
+        .onyx-palette{
+            display:flex;
+            flex-wrap:wrap;
+            gap:7px;
+        }
+
+        .onyx-color{
+            width:22px;
+            height:22px;
+            border-radius:50%;
+            cursor:pointer;
+            border:2px solid rgba(255,255,255,.15);
+        }
+
+        .onyx-color.active{
+            outline:2px solid #fff;
+            outline-offset:2px;
+        }
+
+        .onyx-style-grid{
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:6px;
+        }
+
+        .onyx-style{
+            padding:8px;
+            text-align:center;
+            color:#999;
+            background:rgba(255,255,255,.03);
+            border:1px solid rgba(255,255,255,.07);
+            border-radius:8px;
+            font-size:9px;
+            cursor:pointer;
+        }
+
+        .onyx-style.active{
+            color:var(--onyx-accent);
+            border-color:var(--onyx-accent);
+        }
+
+        .onyx-stat-grid{
+            display:grid;
+            grid-template-columns:repeat(3,1fr);
+            gap:5px;
+        }
+
+        .onyx-stat{
+            background:rgba(255,255,255,.035);
+            border-radius:8px;
+            padding:7px;
+            text-align:center;
+        }
+
+        .onyx-stat-num{
+            font-size:13px;
+            font-weight:800;
+            color:#eee;
+        }
+
+        .onyx-stat-label{
+            font-size:7px;
+            color:#777;
+            margin-top:2px;
+        }
+
+        .onyx-history{
+            max-height:330px;
+            overflow:auto;
+        }
+
+        .onyx-history-item{
+            padding:8px;
+            border-radius:8px;
+            border:1px solid rgba(255,255,255,.06);
+            background:rgba(255,255,255,.025);
+            margin-bottom:6px;
+        }
+
+        .onyx-history-top{
+            display:flex;
+            justify-content:space-between;
+            color:#777;
+            font-size:7px;
+        }
+
+        .onyx-history-src{
+            font-size:8px;
+            color:#aaa;
+            margin-top:4px;
+        }
+
+        .onyx-history-dst{
+            font-size:9px;
+            color:#eee;
+            margin-top:3px;
+        }
+
+        .onyx-about-brand{
+            text-align:center;
+            padding:14px 8px;
+            background:linear-gradient(
+                180deg,
+                rgba(0,220,130,.09),
+                rgba(0,220,130,.02)
+            );
+            border:1px solid rgba(0,220,130,.13);
+            border-radius:14px;
+            margin-bottom:10px;
+        }
+
+        .onyx-about-logo{
+            width:44px;
+            height:44px;
+            margin:0 auto 7px;
+            display:grid;
+            place-items:center;
+            border-radius:14px;
+            background:rgba(0,220,130,.08);
+            border:1px solid rgba(0,220,130,.18);
+        }
+
+        .onyx-about-logo svg{
+            width:27px;
+            height:27px;
+            fill:var(--onyx-accent);
+        }
+
+        .onyx-about-name{
+            font-size:15px;
+            font-weight:900;
+        }
+
+        .onyx-about-sub{
+            font-size:9px;
+            color:#888;
+            margin-top:3px;
+        }
+
+        .onyx-social-list{
+            display:flex;
+            flex-direction:column;
+            gap:8px;
+        }
+
+        .onyx-social{
+            --social:#fff;
+            position:relative;
+            min-height:52px;
+            display:flex;
+            align-items:center;
+            gap:9px;
+            padding:8px 10px;
+            border-radius:12px;
+            border:1px solid rgba(255,255,255,.07);
+            background:rgba(255,255,255,.025);
+            color:inherit;
+            text-decoration:none;
+            overflow:hidden;
+            transition:.22s;
+        }
+
+        .onyx-social:before{
+            content:"";
+            position:absolute;
+            inset:-30%;
+            background:radial-gradient(
+                circle,
+                var(--social),
+                transparent 68%
+            );
+            opacity:0;
+            filter:blur(16px);
+            transition:.22s;
+        }
+
+        .onyx-social:hover{
+            border-color:var(--social);
+            transform:translateY(-2px);
+            box-shadow:
+                0 0 8px var(--social),
+                0 0 22px color-mix(
+                    in srgb,
+                    var(--social) 38%,
+                    transparent
+                );
+            background:rgba(255,255,255,.045);
+        }
+
+        .onyx-social:hover:before{
+            opacity:.12;
+        }
+
+        .onyx-social-icon{
+            position:relative;
+            z-index:2;
+            width:35px;
+            height:35px;
+            flex:0 0 35px;
+            display:grid;
+            place-items:center;
+            border-radius:10px;
+            color:var(--social);
+            background:rgba(255,255,255,.045);
+        }
+
+        .onyx-social-icon svg{
+            width:19px;
+            height:19px;
+            fill:currentColor;
+        }
+
+        .onyx-social-main{
+            position:relative;
+            z-index:2;
+            flex:1;
+            min-width:0;
+        }
+
+        .onyx-social-title{
+            font-size:10px;
+            font-weight:800;
+        }
+
+        .onyx-social-handle{
+            font-size:8px;
+            color:#777;
+            margin-top:2px;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+        }
+
+        .onyx-social-arrow{
+            position:relative;
+            z-index:2;
+            font-size:15px;
+            color:#666;
+        }
+
+        .onyx-social:hover .onyx-social-arrow{
+            color:var(--social);
+        }
+
+        .tg-card{--social:#2AABEE}
+        .yt-card{--social:#FF1744}
+        .dc-card{--social:#5865F2}
+
+        .tg-msg-wrapper{
+            margin-top:6px;
+        }
+
+        .tg-msg-trans{
+            position:relative;
+            padding:8px 42px 8px 12px;
+            background:linear-gradient(
+                90deg,
+                rgba(0,220,130,.08),
+                rgba(0,0,0,.02)
+            );
+            border-left:2px solid var(--onyx-accent);
+            border-radius:0 8px 8px 8px;
+            color:#e0fff0;
+            line-height:1.5;
+            font-size:.95em;
+            cursor:pointer;
+            overflow-wrap:anywhere;
+        }
+
+        .tg-msg-trans.onyx-minimal{
+            background:transparent;
+            border-left:1px solid rgba(255,255,255,.15);
+        }
+
+        .tg-msg-trans.onyx-compact{
+            font-size:.88em;
+            padding:5px 10px;
+        }
+
+        .tg-msg-trans.onyx-native{
+            background:rgba(255,255,255,.025);
+            border-left:2px solid #5865F2;
+            border-radius:4px;
+        }
+
+        .tg-msg-actions{
+            position:absolute;
+            top:4px;
+            right:4px;
+            display:flex;
+            gap:2px;
+            opacity:0;
+            transition:.2s;
+        }
+
+        .tg-msg-wrapper:hover .tg-msg-actions{
+            opacity:1;
+        }
+
+        .tg-mini-btn{
+            width:24px;
+            height:24px;
+            display:grid;
+            place-items:center;
+            border-radius:4px;
+            background:rgba(0,0,0,.2);
+            color:#999;
+            cursor:pointer;
+        }
+
+        .tg-mini-btn:hover{
+            background:var(--onyx-accent);
+            color:#000;
+        }
+
+        .tg-mini-btn svg{
+            width:12px;
+            height:12px;
+            fill:currentColor;
+        }
+
+        .tg-input-actions{
+            display:flex;
+            align-items:center;
+            gap:2px;
+            height:44px;
+        }
+
+        .tg-action-btn{
+            width:32px;
+            height:32px;
+            border:0;
+            background:transparent;
+            border-radius:4px;
+            color:#b5bac1;
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            cursor:pointer;
+            padding:0;
+            margin:0;
+        }
+
+        .tg-action-btn:hover{
+            background:rgba(255,255,255,.08);
+        }
+
+        .tg-action-btn svg{
+            width:24px;
+            height:24px;
+            fill:currentColor;
+        }
+
+        #tg-write-btn:hover{
+            color:var(--onyx-accent);
+        }
+
+        #tg-mic-btn:hover,
+        #tg-mic-btn.mic-active{
+            color:#ff5252;
+        }
+
+        #tg-write-btn.processing{
+            color:var(--onyx-accent);
+        }
+
+        #tg-write-btn.processing svg{
+            animation:onyxSpin .8s linear infinite;
+        }
+
+        @keyframes onyxSpin{
+            to{transform:rotate(360deg)}
+        }
+
+        #onyx-floating-toggle{
+            position:fixed;
+            right:20px;
+            bottom:20px;
+            width:48px;
+            height:48px;
+            border-radius:50%;
+            display:grid;
+            place-items:center;
+            background:var(--onyx-accent);
+            box-shadow:0 8px 24px rgba(0,0,0,.45);
+            border:2px solid rgba(255,255,255,.12);
+            z-index:2147483646;
+            cursor:grab;
+        }
+
+        #onyx-floating-toggle svg{
+            width:24px;
+            height:24px;
+            fill:#000;
+        }
+
+        .onyx-popup{
+            position:fixed;
+            z-index:2147483647;
+            min-width:170px;
+            max-width:280px;
+            padding:9px;
+            border:1px solid rgba(255,255,255,.08);
+            border-radius:11px;
+            background:rgba(22,22,22,.98);
+            box-shadow:0 15px 40px rgba(0,0,0,.55);
+            display:none;
+        }
+
+        .onyx-popup-title{
+            font-size:8px;
+            color:#777;
+            margin-bottom:5px;
+        }
+
+        .onyx-popup-main{
+            font-size:10px;
+            color:#eee;
+        }
+
+        .onyx-popup-sub{
+            font-size:10px;
+            color:var(--onyx-accent);
+            margin-top:3px;
+        }
+    `;
+
+    document.head.appendChild(style);
+
+    /* =========================================================
+       TRANSLATION HELPERS
+       ========================================================= */
+
+    function protectText(text){
+        if(!config.protection){
+            return {
+                text:text,
+                restore:x=>x
+            };
+        }
+
+        const tokens=[];
+        const regexes=[
+            /```[\s\S]*?```/g,
+            /`[^`\n]+`/g,
+            /https?:\/\/[^\s]+/gi,
+            /www\.[^\s]+/gi,
+            /<@!?\d+>/g,
+            /<@&\d+>/g,
+            /<#\d+>/g,
+            /<a?:[A-Za-z0-9_]+:\d+>/g,
+            /#[A-Za-z0-9_-]{2,}/g
+        ];
+
+        let output=text;
+
+        regexes.forEach(regex=>{
+            output=output.replace(regex,match=>{
+                const token=`ONYXLOCK${tokens.length}END`;
+                tokens.push(match);
+                return token;
+            });
+        });
+
+        return {
+            text:output,
+            restore:translated =>
+                translated.replace(
+                    /ONYXLOCK(\d+)END/g,
+                    (_,n)=>tokens[Number(n)] || ""
+                )
+        };
+    }
+
+    function translate(text,lang){
+        return new Promise(resolve=>{
+
+            if(!text || text.trim().length<2){
+                resolve({
+                    text:null,
+                    detected:null
+                });
+                return;
+            }
+
+            const key=`${text}__${lang}__${config.protection}`;
+
+            if(state.cache.has(key)){
+                resolve(state.cache.get(key));
+                return;
+            }
+
+            const pack=protectText(text);
+
+            GM_xmlhttpRequest({
+                method:"GET",
+
+                url:
+                    "https://translate.googleapis.com/translate_a/single" +
+                    "?client=gtx" +
+                    "&sl=auto" +
+                    "&tl="+encodeURIComponent(lang) +
+                    "&dt=t" +
+                    "&q="+encodeURIComponent(pack.text),
+
+                onload:response=>{
+
+                    try{
+
+                        const data=
+                            JSON.parse(
+                                response.responseText
+                            );
+
+                        const raw=
+                            Array.isArray(data?.[0])
+                                ? data[0]
+                                    .map(x=>x?.[0]||"")
+                                    .join("")
+                                : "";
+
+                        const result={
+                            text:raw
+                                ? pack.restore(raw)
+                                : null,
+
+                            detected:
+                                typeof data?.[2]==="string"
+                                    ? data[2]
+                                    : null
+                        };
+
+                        if(result.text){
+                            state.cache.set(
+                                key,
+                                result
+                            );
+                        }
+
+                        resolve(result);
+
+                    }catch(e){
+
+                        console.error(
+                            "[Onyx] Translation error",
+                            e
+                        );
+
+                        resolve({
+                            text:null,
+                            detected:null
+                        });
+                    }
+                },
+
+                onerror:()=>{
+                    resolve({
+                        text:null,
+                        detected:null
+                    });
+                }
+            });
+        });
+    }
+
+    function addHistory(
+        source,
+        target,
+        original,
+        translated,
+        detected
+    ){
+
+        if(
+            !config.history ||
+            !translated
+        ){
+            return;
+        }
+
+        state.history.unshift({
+            id:
+                Date.now()+Math.random(),
+
+            time:
+                new Date().toISOString(),
+
+            source,
+            target,
+            original,
+            translated,
+            detected
+        });
+
+        if(
+            state.history.length>100
+        ){
+            state.history.length=100;
+        }
+
+        save(
+            "akram_history",
+            state.history
+        );
+    }
+
+    function stat(name){
+        if(!config.stats) return;
+
+        state.stats[name]=
+            (state.stats[name]||0)+1;
+
+        save(
+            "akram_stats",
+            state.stats
+        );
+    }
+
+    function favorite(
+        original,
+        translated,
+        target
+    ){
+
+        const found=
+            state.favorites.find(
+                x=>
+                    x.original===original &&
+                    x.target===target
+            );
+
+        if(found){
+
+            state.favorites=
+                state.favorites.filter(
+                    x=>x!==found
+                );
+
+        }else{
+
+            state.favorites.unshift({
+                original,
+                translated,
+                target,
+                time:Date.now()
+            });
+
+            state.favorites=
+                state.favorites.slice(0,50);
+        }
+
+        save(
+            "akram_favorites",
+            state.favorites
+        );
+    }
+
+    /* =========================================================
+       USER LANGUAGE MEMORY
+       ========================================================= */
+
+    function authorName(el){
+
+        const parent=
+            el.closest(
+                "[class*='message_'],article"
+            );
+
+        if(!parent) return "";
+
+        const author=
+            parent.querySelector(
+                "[class*='username'],[class*='author'],h3"
+            );
+
+        return(
+            author?.textContent||""
+        )
+            .trim()
+            .replace(/\s+/g," ");
+    }
+
+    function rememberUser(
+        el,
+        detected
+    ){
+
+        if(
+            !config.userMemory ||
+            !detected
+        ){
+            return;
+        }
+
+        const name=
+            authorName(el);
+
+        if(!name) return;
+
+        state.users[name]=detected;
+
+        save(
+            "akram_user_languages",
+            state.users
+        );
+    }
+
+    function currentConversation(){
+
+        const selectors=[
+            "header h1",
+            "header h2",
+            "header [class*='name_']",
+            "header [class*='topic_']"
+        ];
+
+        for(
+            const selector
+            of selectors
+        ){
+
+            const node=
+                document.querySelector(
+                    selector
+                );
+
+            const text=
+                (node?.textContent||"")
+                    .trim();
+
+            if(
+                text &&
+                text.length<100
+            ){
+                return text;
+            }
+        }
+
+        return "";
+    }
+
+    function outgoingLanguage(){
+
+        if(
+            !config.userMemory
+        ){
+            return config.write;
+        }
+
+        const name=
+            currentConversation();
+
+        if(
+            name &&
+            state.users[name] &&
+            LANGUAGES[state.users[name]]
+        ){
+            return state.users[name];
+        }
+
+        return config.write;
+    }
+
+    /* =========================================================
+       OUTGOING INTERCEPTOR
+       ========================================================= */
+
+    async function translateOutgoingBody(
+        body
+    ){
+
+        if(
+            !config.enabled ||
+            typeof body!=="string" ||
+            !body.trim() ||
+            state.outgoing
+        ){
+            return body;
+        }
+
+        let data;
+
+        try{
+            data=JSON.parse(body);
+        }catch{
+            return body;
+        }
+
+        if(
+            !data ||
+            typeof data.content!=="string"
+        ){
+            return body;
+        }
+
+        const original=
+            data.content;
+
+        if(
+            !original.trim() ||
+            original.trim().startsWith("/")
+        ){
+            return body;
+        }
+
+        const target=
+            outgoingLanguage();
+
+        try{
+
+            state.outgoing=true;
+
+            setStatus(
+                "Translating outgoing..."
+            );
+
+            const result=
+                await translate(
+                    original,
+                    target
+                );
+
+            if(
+                result.text &&
+                result.text
+                    .trim()
+                    .toLowerCase() !==
+                original
+                    .trim()
+                    .toLowerCase()
+            ){
+
+                data.content=
+                    result.text;
+
+                addHistory(
+                    result.detected||"auto",
+                    target,
+                    original,
+                    result.text,
+                    result.detected||""
+                );
+
+                stat("translations");
+                stat("outgoing");
+
+                setStatus(
+                    "Ready"
+                );
+
+                return JSON.stringify(
+                    data
+                );
+            }
+
+        }catch(e){
+
+            console.error(
+                "[Onyx] Outgoing error",
+                e
+            );
+
+        }finally{
+
+            state.outgoing=false;
+        }
+
+        setStatus("Ready");
+
+        return body;
+    }
+
+    const nativeFetch=
+        window.fetch.bind(
+            window
+        );
+
+    window.fetch=
+        async function(
+            resource,
+            options
+        ){
+
+            try{
+
+                let url="";
+                let method="";
+                let body=null;
+
+                if(
+                    resource instanceof
+                    Request
+                ){
+
+                    url=
+                        resource.url||"";
+
+                    method=
+                        (
+                            options?.method||
+                            resource.method||
+                            ""
+                        )
+                            .toUpperCase();
+
+                    if(
+                        options &&
+                        Object.prototype
+                            .hasOwnProperty.call(
+                                options,
+                                "body"
+                            )
+                    ){
+
+                        body=options.body;
+
+                    }else if(
+                        method==="POST"
+                    ){
+
+                        try{
+                            body=
+                                await resource
+                                    .clone()
+                                    .text();
+                        }catch{
+                            body=null;
+                        }
+                    }
+
+                }else{
+
+                    url=
+                        typeof resource==="string"
+                            ? resource
+                            : resource?.url||"";
+
+                    method=
+                        String(
+                            options?.method||""
+                        ).toUpperCase();
+
+                    body=
+                        options?.body??null;
+                }
+
+                const messageRequest=
+                    method==="POST" &&
+                    url.includes("/api/") &&
+                    url.includes("/messages") &&
+                    typeof body==="string";
+
+                if(messageRequest){
+
+                    const translated=
+                        await translateOutgoingBody(
+                            body
+                        );
+
+                    if(translated!==body){
+
+                        if(
+                            resource instanceof Request &&
+                            (
+                                !options ||
+                                !Object.prototype
+                                    .hasOwnProperty.call(
+                                        options,
+                                        "body"
+                                    )
+                            )
+                        ){
+
+                            const request=
+                                new Request(
+                                    resource.url,
+                                    {
+                                        method:"POST",
+                                        headers:
+                                            new Headers(
+                                                resource.headers
+                                            ),
+                                        body:translated,
+                                        credentials:
+                                            resource.credentials,
+                                        mode:
+                                            resource.mode,
+                                        cache:
+                                            resource.cache,
+                                        redirect:
+                                            resource.redirect,
+                                        referrer:
+                                            resource.referrer,
+                                        referrerPolicy:
+                                            resource.referrerPolicy,
+                                        integrity:
+                                            resource.integrity
+                                    }
+                                );
+
+                            return nativeFetch(
+                                request
+                            );
+                        }
+
+                        return nativeFetch(
+                            resource,
+                            {
+                                ...(options||{}),
+                                body:translated
+                            }
+                        );
+                    }
+                }
+
+            }catch(e){
+
+                console.error(
+                    "[Onyx] fetch interceptor error",
+                    e
+                );
+            }
+
+            return nativeFetch(
+                resource,
+                options
+            );
+        };
+
+    const nativeOpen=
+        XMLHttpRequest.prototype.open;
+
+    const nativeSend=
+        XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open=
+        function(
+            method,
+            url,
+            ...rest
+        ){
+
+            this.__onyxMethod=
+                String(method||"");
+
+            this.__onyxURL=
+                typeof url==="string"
+                    ? url
+                    : url?.href||"";
+
+            return nativeOpen.call(
+                this,
+                method,
+                url,
+                ...rest
+            );
+        };
+
+    XMLHttpRequest.prototype.send=
+        function(body){
+
+            const method=
+                String(
+                    this.__onyxMethod||""
+                ).toUpperCase();
+
+            const url=
+                String(
+                    this.__onyxURL||""
+                );
+
+            if(
+                config.enabled &&
+                method==="POST" &&
+                url.includes("/api/") &&
+                url.includes("/messages") &&
+                typeof body==="string"
+            ){
+
+                const xhr=this;
+
+                translateOutgoingBody(
+                    body
+                )
+                .then(
+                    result=>{
+                        try{
+                            nativeSend.call(
+                                xhr,
+                                result
+                            );
+                        }catch{
+                            nativeSend.call(
+                                xhr,
+                                body
+                            );
+                        }
+                    }
+                )
+                .catch(
+                    ()=>{
+                        nativeSend.call(
+                            xhr,
+                            body
+                        );
+                    }
+                );
+
+                return;
+            }
+
+            return nativeSend.call(
+                this,
+                body
+            );
+        };
+
+    /* =========================================================
+       INPUT
+       ========================================================= */
+
+    function getInput(){
+
+        return(
+            document.querySelector(
+                "#message-input-text[contenteditable='true']"
+            ) ||
+            document.querySelector(
+                ".input-message-input[contenteditable='true']"
+            ) ||
+            document.querySelector(
+                "#editable-message-text[contenteditable='true']"
+            ) ||
+            document.querySelector(
+                "div[role='textbox'][contenteditable='true']"
+            ) ||
+            document.querySelector(
+                "div[role='textbox']"
+            )
+        );
+    }
+
+    function getInputText(input){
+        return(
+            input?.innerText||
+            input?.textContent||
+            ""
+        ).trim();
+    }
+
+    function replaceInput(
+        input,
+        text
+    ){
+
+        if(!input) return;
+
+        input.focus();
+
+        document.execCommand(
+            "selectAll",
+            false,
+            null
+        );
+
+        document.execCommand(
+            "insertText",
+            false,
+            text
+        );
+
+        try{
+
+            input.dispatchEvent(
+                new InputEvent(
+                    "input",
+                    {
+                        bubbles:true,
+                        inputType:"insertText",
+                        data:text
+                    }
+                )
+            );
+
+        }catch{
+
+            input.dispatchEvent(
+                new Event(
+                    "input",
+                    {
+                        bubbles:true
+                    }
+                )
+            );
+        }
+    }
+
+    async function handleWrite(){
+
+        const input=
+            getInput();
+
+        const button=
+            document.getElementById(
+                "tg-write-btn"
+            );
+
+        const text=
+            getInputText(
+                input
+            );
+
+        if(!input || !text) return;
+
+        button?.classList.add(
+            "processing"
+        );
+
+        const target=
+            outgoingLanguage();
+
+        const result=
+            await translate(
+                text,
+                target
+            );
+
+        button?.classList.remove(
+            "processing"
+        );
+
+        if(result.text){
+
+            replaceInput(
+                input,
+                result.text
+            );
+
+            addHistory(
+                result.detected||"auto",
+                target,
+                text,
+                result.text,
+                result.detected||""
+            );
+
+            stat("translations");
+            stat("outgoing");
+        }
+    }
+
+    /* =========================================================
+       VOICE
+       ========================================================= */
+
+    function startDictation(){
+
+        if(
+            !(
+                "webkitSpeechRecognition"
+                in window
+            )
+        ){
+
+            alert(
+                "Speech Recognition is not supported by this browser."
+            );
+
+            return;
+        }
+
+        const button=
+            document.getElementById(
+                "tg-mic-btn"
+            );
+
+        if(
+            state.recognition &&
+            button?.classList.contains(
+                "mic-active"
+            )
+        ){
+
+            try{
+                state.recognition.stop();
+            }catch{}
+
+            return;
+        }
+
+        state.recognition=
+            new webkitSpeechRecognition();
+
+        state.recognition.lang=
+            config.read;
+
+        state.recognition.interimResults=
+            false;
+
+        state.recognition.continuous=
+            false;
+
+        state.recognition.onstart=
+            ()=>{
+                button?.classList.add(
+                    "mic-active"
+                );
+            };
+
+        state.recognition.onend=
+            ()=>{
+                button?.classList.remove(
+                    "mic-active"
+                );
+            };
+
+        state.recognition.onerror=
+            ()=>{
+                button?.classList.remove(
+                    "mic-active"
+                );
+            };
+
+        state.recognition.onresult=
+            async event=>{
+
+                const transcript=
+                    event
+                        .results?.[0]?.[0]
+                        ?.transcript||
+                    "";
+
+                if(!transcript)
+                    return;
+
+                const input=
+                    getInput();
+
+                if(!input)
+                    return;
+
+                replaceInput(
+                    input,
+                    transcript
+                );
+
+                const target=
+                    outgoingLanguage();
+
+                const result=
+                    await translate(
+                        transcript,
+                        target
+                    );
+
+                if(result.text){
+
+                    replaceInput(
+                        input,
+                        result.text
+                    );
+
+                    addHistory(
+                        result.detected||config.read,
+                        target,
+                        transcript,
+                        result.text,
+                        result.detected||""
+                    );
+                }
+
+                stat("voice");
+                stat("translations");
+            };
+
+        try{
+            state.recognition.start();
+        }catch{}
+    }
+
+    /* =========================================================
+       TTS
+       ========================================================= */
+
+    function speakText(text){
+
+        if(
+            !(
+                "speechSynthesis"
+                in window
+            ) ||
+            !text
+        ){
+            return;
+        }
+
+        speechSynthesis.cancel();
+
+        const utterance=
+            new SpeechSynthesisUtterance(
+                text
+            );
+
+        utterance.lang=
+            config.read;
+
+        utterance.rate=
+            Number(
+                config.ttsRate
+            )||.9;
+
+        utterance.volume=
+            Number(
+                config.ttsVolume
+            );
+
+        speechSynthesis.speak(
+            utterance
+        );
+    }
+
+    /* =========================================================
+       INCOMING TRANSLATION
+       ========================================================= */
+
+    function messageText(el){
+
+        const clone=
+            el.cloneNode(true);
+
+        clone
+            .querySelectorAll(
+                ".tg-msg-wrapper,.time,.message-time,span.time,time"
+            )
+            .forEach(
+                node=>node.remove()
+            );
+
+        return(
+            clone.innerText||
+            clone.textContent||
+            ""
+        ).trim();
+    }
+
+    function applyMessageStyle(el){
+
+        el.classList.remove(
+            "onyx-minimal",
+            "onyx-compact",
+            "onyx-native"
+        );
+
+        if(config.style==="minimal")
+            el.classList.add(
+                "onyx-minimal"
+            );
+
+        if(config.style==="compact")
+            el.classList.add(
+                "onyx-compact"
+            );
+
+        if(config.style==="native")
+            el.classList.add(
+                "onyx-native"
+            );
+    }
+
+    function createMessageTranslation(
+        el,
+        original,
+        translated,
+        detected
+    ){
+
+        if(
+            !el ||
+            !el.isConnected ||
+            el.querySelector(
+                ".tg-msg-wrapper"
+            )
+        ){
+            return;
+        }
+
+        el.classList.add(
+            "tg-checked"
+        );
+
+        const wrapper=
+            document.createElement(
+                "div"
+            );
+
+        wrapper.className=
+            "tg-msg-wrapper";
+
+        const box=
+            document.createElement(
+                "div"
+            );
+
+        box.className=
+            "tg-msg-trans";
+
+        applyMessageStyle(box);
+
+        const textNode=
+            document.createTextNode(
+                translated
+            );
+
+        box.appendChild(
+            textNode
+        );
+
+        const actions=
+            document.createElement(
+                "div"
+            );
+
+        actions.className=
+            "tg-msg-actions";
+
+        /* COPY */
+
+        const copy=
+            document.createElement(
+                "div"
+            );
+
+        copy.className=
+            "tg-mini-btn";
+
+        copy.title=
+            "Copy";
+
+        copy.innerHTML=
+            I.clipboard;
+
+        copy.onclick=
+            e=>{
+
+                e.stopPropagation();
+
+                navigator.clipboard?.writeText(
+                    box.firstChild
+                        ?.textContent||
+                    translated
+                );
+
+                copy.style.color=
+                    "#000";
+
+                copy.style.background=
+                    "var(--onyx-accent)";
+
+                setTimeout(
+                    ()=>{
+                        copy.style.color="";
+                        copy.style.background="";
+                    },
+                    700
+                );
+            };
+
+        /* TTS */
+
+        const tts=
+            document.createElement(
+                "div"
+            );
+
+        tts.className=
+            "tg-mini-btn";
+
+        tts.title=
+            "Listen";
+
+        tts.innerHTML=
+            I.volume;
+
+        tts.onclick=
+            e=>{
+
+                e.stopPropagation();
+
+                speakText(
+                    box.firstChild
+                        ?.textContent||
+                    translated
+                );
+            };
+
+        /* FAVORITE */
+
+        const fav=
+            document.createElement(
+                "div"
+            );
+
+        fav.className=
+            "tg-mini-btn";
+
+        fav.title=
+            "Favorite";
+
+        fav.innerHTML=
+            I.star;
+
+        if(
+            state.favorites.some(
+                x=>
+                    x.original===original &&
+                    x.target===config.read
+            )
+        ){
+            fav.style.color=
+                "var(--onyx-accent)";
+        }
+
+        fav.onclick=
+            e=>{
+
+                e.stopPropagation();
+
+                favorite(
+                    original,
+                    translated,
+                    config.read
+                );
+
+                fav.style.color=
+                    state.favorites.some(
+                        x=>
+                            x.original===original &&
+                            x.target===config.read
+                    )
+                        ? "var(--onyx-accent)"
+                        : "";
+            };
+
+        actions.append(
+            copy,
+            tts,
+            fav
+        );
+
+        box.appendChild(
+            actions
+        );
+
+        box.title=
+            "Click to flip";
+
+        box.onclick=
+            e=>{
+
+                e.stopPropagation();
+
+                const current=
+                    box.firstChild
+                        ?.textContent||
+                    "";
+
+                if(
+                    current===translated
+                ){
+
+                    box.firstChild
+                        .textContent=
+                        original;
+
+                    box.style.borderLeftColor=
+                        "#888";
+
+                }else{
+
+                    box.firstChild
+                        .textContent=
+                        translated;
+
+                    box.style.borderLeftColor=
+                        "var(--onyx-accent)";
+                }
+            };
+
+        /* TYPER */
+
+        if(config.typing){
+
+            box.firstChild
+                .textContent="";
+
+            let index=0;
+
+            const type=()=>{
+
+                if(!box.isConnected)
+                    return;
+
+                if(
+                    index<translated.length
+                ){
+
+                    box.firstChild
+                        .textContent +=
+                        translated.charAt(
+                            index++
+                        );
+
+                    requestAnimationFrame(
+                        type
+                    );
+                }
+            };
+
+            type();
+        }
+
+        wrapper.appendChild(
+            box
+        );
+
+        /* MULTI TRANSLATION */
+
+        if(config.multi){
+
+            config.multiTargets
+                .slice(0,5)
+                .forEach(
+                    target=>{
+
+                        if(
+                            !LANGUAGES[target] ||
+                            target===config.read
+                        ){
+                            return;
+                        }
+
+                        const sub=
+                            document.createElement(
+                                "div"
+                            );
+
+                        sub.className=
+                            "tg-msg-trans onyx-compact";
+
+                        sub.style.marginTop=
+                            "4px";
+
+                        const label=
+                            document.createElement(
+                                "span"
+                            );
+
+                        label.style.color=
+                            "var(--onyx-accent)";
+
+                        label.textContent=
+                            LANGUAGES[target]+": ";
+
+                        const value=
+                            document.createElement(
+                                "span"
+                            );
+
+                        value.textContent=
+                            "...";
+
+                        sub.append(
+                            label,
+                            value
+                        );
+
+                        wrapper.appendChild(
+                            sub
+                        );
+
+                        translate(
+                            original,
+                            target
+                        )
+                        .then(
+                            result=>{
+                                if(
+                                    result.text
+                                ){
+
+                                    value.textContent=
+                                        result.text;
+
+                                    addHistory(
+                                        result.detected||"auto",
+                                        target,
+                                        original,
+                                        result.text,
+                                        result.detected||""
+                                    );
+                                }
+                            }
+                        );
+                    }
+                );
+        }
+
+        el.appendChild(
+            wrapper
+        );
+
+        rememberUser(
+            el,
+            detected
+        );
+
+        addHistory(
+            detected||"auto",
+            config.read,
+            original,
+            translated,
+            detected||""
+        );
+
+        stat("translations");
+        stat("incoming");
+    }
+
+    async function processQueue(){
+
+        if(
+            state.processing ||
+            !state.queue.length
+        ){
+            return;
+        }
+
+        state.processing=
+            true;
+
+        while(
+            state.queue.length
+        ){
+
+            const item=
+                state.queue.shift();
+
+            if(
+                !item?.el?.isConnected
+            ){
+                continue;
+            }
+
+            const result=
+                await translate(
+                    item.text,
+                    config.read
+                );
+
+            if(
+                result.text &&
+                (
+                    !config.smart ||
+                    result.text
+                        .trim()
+                        .toLowerCase() !==
+                    item.text
+                        .trim()
+                        .toLowerCase()
+                )
+            ){
+
+                createMessageTranslation(
+                    item.el,
+                    item.text,
+                    result.text,
+                    result.detected
+                );
+
+            }else{
+
+                item.el.classList.add(
+                    "tg-checked"
+                );
+            }
+        }
+
+        state.processing=
+            false;
+    }
+
+    function scanChat(){
+
+        if(!config.enabled)
+            return;
+
+        const nodes=
+            document.querySelectorAll(
+                [
+                    ".text-content",
+                    ".translatable-message",
+                    ".message-text",
+                    "div[id^='message-content-']",
+                    "[class*='messageContent']"
+                ].join(",")
+            );
+
+        nodes.forEach(
+            el=>{
+
+                if(
+                    el.classList.contains(
+                        "tg-checked"
+                    ) ||
+                    el.dataset.onyxPending==="1"
+                ){
+                    return;
+                }
+
+                const text=
+                    messageText(el);
+
+                if(!text)
+                    return;
+
+                el.dataset.onyxPending=
+                    "1";
+
+                state.queue.push({
+                    el,
+                    text
+                });
+
+                delete el.dataset.onyxPending;
+            }
+        );
+
+        processQueue();
+    }
+
+    function refreshTranslations(){
+
+        state.cache.clear();
+
+        document
+            .querySelectorAll(
+                ".tg-msg-wrapper"
+            )
+            .forEach(
+                x=>x.remove()
+            );
+
+        document
+            .querySelectorAll(
+                ".tg-checked"
+            )
+            .forEach(
+                x=>
+                    x.classList.remove(
+                        "tg-checked"
+                    )
+            );
+
+        scanChat();
+    }
+
+    /* =========================================================
+       QUICK SELECTION
+       ========================================================= */
+
+    function selectionPopup(){
+
+        if(
+            document.getElementById(
+                "onyx-selection-popup"
+            )
+        ){
+            return;
+        }
+
+        const popup=
+            document.createElement(
+                "div"
+            );
+
+        popup.id=
+            "onyx-selection-popup";
+
+        popup.className=
+            "onyx-popup";
+
+        popup.innerHTML=`
+            <div class="onyx-popup-title">
+                Onyx Quick Translate
+            </div>
+
+            <div
+                class="onyx-popup-main"
+                id="onyx-popup-src"
+            ></div>
+
+            <div
+                class="onyx-popup-sub"
+                id="onyx-popup-dst"
+            >
+                Translating...
+            </div>
+        `;
+
+        document.body.appendChild(
+            popup
+        );
+    }
+
+    async function onTextSelection(){
+
+        if(!config.quickSelect)
+            return;
+
+        const selection=
+            window.getSelection();
+
+        const text=
+            (selection?.toString()||"")
+                .trim();
+
+        if(
+            !text ||
+            text.length<2
+        ){
+            return;
+        }
+
+        selectionPopup();
+
+        const popup=
+            document.getElementById(
+                "onyx-selection-popup"
+            );
+
+        const range=
+            selection.getRangeAt(0);
+
+        const rect=
+            range.getBoundingClientRect();
+
+        popup.style.left=
+            `${Math.max(
+                10,
+                Math.min(
+                    window.innerWidth-280,
+                    rect.left
+                )
+            )}px`;
+
+        popup.style.top=
+            `${Math.min(
+                window.innerHeight-90,
+                rect.bottom+8
+            )}px`;
+
+        popup.style.display=
+            "block";
+
+        document.getElementById(
+            "onyx-popup-src"
+        ).textContent=
+            text;
+
+        document.getElementById(
+            "onyx-popup-dst"
+        ).textContent=
+            "Translating...";
+
+        const result=
+            await translate(
+                text,
+                config.read
+            );
+
+        document.getElementById(
+            "onyx-popup-dst"
+        ).textContent=
+            result.text||
+            "Translation failed";
+
+        if(result.text){
+
+            addHistory(
+                result.detected||"auto",
+                config.read,
+                text,
+                result.text,
+                result.detected||""
+            );
+
+            stat("selected");
+            stat("translations");
+        }
+
+        clearTimeout(
+            onTextSelection.timer
+        );
+
+        onTextSelection.timer=
+            setTimeout(
+                ()=>{
+                    popup.style.display=
+                        "none";
+                },
+                6000
+            );
+    }
+
+    document.addEventListener(
+        "mouseup",
+        ()=>{
+            setTimeout(
+                onTextSelection,
+                20
+            );
+        }
+    );
+
+    document.addEventListener(
+        "mousedown",
+        e=>{
+            const popup=
+                document.getElementById(
+                    "onyx-selection-popup"
+                );
+
+            if(
+                popup &&
+                !popup.contains(e.target)
+            ){
+                popup.style.display=
+                    "none";
+            }
+        }
+    );
+
+    /* =========================================================
+       CLIPBOARD
+       ========================================================= */
+
+    async function translateClipboard(){
+
+        try{
+
+            const text=
+                await navigator.clipboard
+                    .readText();
+
+            if(!text?.trim())
+                return;
+
+            const result=
+                await translate(
+                    text,
+                    config.write
+                );
+
+            if(result.text){
+
+                await navigator.clipboard
+                    .writeText(
+                        result.text
+                    );
+
+                addHistory(
+                    result.detected||"auto",
+                    config.write,
+                    text,
+                    result.text,
+                    result.detected||""
+                );
+
+                stat("clipboard");
+                stat("translations");
+
+                setStatus(
+                    "Clipboard translated"
+                );
+
+                alert(
+                    "Translated text copied to clipboard."
+                );
+            }
+
+        }catch(e){
+
+            alert(
+                "Clipboard permission was not available."
+            );
+        }
+    }
+
+    /* =========================================================
+       UI
+       ========================================================= */
+
+    function dropdown(type,value){
+
+        const box=
+            document.createElement(
+                "div"
+            );
+
+        box.className=
+            "onyx-langbox";
+
+        const label=
+            document.createElement(
+                "div"
+            );
+
+        label.className=
+            "onyx-langlabel";
+
+        label.textContent=
+            type==="read"
+                ? "Incoming"
+                : "Outgoing";
+
+        const button=
+            document.createElement(
+                "div"
+            );
+
+        button.className=
+            "onyx-select";
+
+        button.textContent=
+            LANGUAGES[value]||
+            value;
+
+        const list=
+            document.createElement(
+                "div"
+            );
+
+        list.className=
+            "onyx-dropdown";
+
+        const search=
+            document.createElement(
+                "input"
+            );
+
+        search.className=
+            "onyx-search";
+
+        search.placeholder=
+            "Search language...";
+
+        search.onclick=
+            e=>
+                e.stopPropagation();
+
+        search.oninput=
+            e=>{
+
+                const q=
+                    e.target.value
+                        .toLowerCase();
+
+                list
+                    .querySelectorAll(
+                        ".onyx-opt"
+                    )
+                    .forEach(
+                        opt=>{
+                            opt.style.display=
+                                opt.textContent
+                                    .toLowerCase()
+                                    .includes(q)
+                                    ? "block"
+                                    : "none";
+                        }
+                    );
+            };
+
+        list.appendChild(
+            search
+        );
+
+        Object.entries(
+            LANGUAGES
+        ).forEach(
+            ([code,name])=>{
+
+                const opt=
+                    document.createElement(
+                        "div"
+                    );
+
+                opt.className=
+                    "onyx-opt";
+
+                if(code===value)
+                    opt.classList.add(
+                        "sel"
+                    );
+
+                opt.textContent=
+                    name;
+
+                opt.onclick=
+                    e=>{
+
+                        e.stopPropagation();
+
+                        config[type]=
+                            code;
+
+                        sync(
+                            type,
+                            code
+                        );
+
+                        button.textContent=
+                            name;
+
+                        list.classList.remove(
+                            "show"
+                        );
+
+                        if(
+                            type==="read"
+                        ){
+                            refreshTranslations();
+                        }
+                    };
+
+                list.appendChild(
+                    opt
+                );
+            }
+        );
+
+        button.onclick=
+            e=>{
+
+                e.stopPropagation();
+
+                document
+                    .querySelectorAll(
+                        ".onyx-dropdown"
+                    )
+                    .forEach(
+                        x=>{
+                            if(x!==list){
+                                x.classList.remove(
+                                    "show"
+                                );
+                            }
+                        }
+                    );
+
+                list.classList.toggle(
+                    "show"
+                );
+
+                if(
+                    list.classList.contains(
+                        "show"
+                    )
+                ){
+
+                    search.value=
+                        "";
+
+                    search.focus();
+                }
+            };
+
+        box.append(
+            label,
+            button,
+            list
+        );
+
+        return box;
+    }
+
+    function setting(
+        icon,
+        title,
+        sub,
+        value,
+        change
+    ){
+
+        const row=
+            document.createElement(
+                "div"
+            );
+
+        row.className=
+            "onyx-setting";
+
+        row.innerHTML=`
+            <div class="onyx-setting-left">
+
+                <div class="onyx-setting-icon">
+                    ${icon}
+                </div>
+
+                <div>
+                    <div class="onyx-setting-title">
+                        ${title}
+                    </div>
+
+                    <div class="onyx-setting-sub">
+                        ${sub}
+                    </div>
+                </div>
+
+            </div>
+
+            <label class="onyx-switch">
+
+                <input
+                    type="checkbox"
+                    ${value?"checked":""}
+                >
+
+                <span class="onyx-slider"></span>
+
+            </label>
+        `;
+
+        row
+            .querySelector("input")
+            .onchange=
+                e=>
+                    change(
+                        e.target.checked
+                    );
+
+        return row;
+    }
+
+    function setStatus(text){
+
+        state.status=
+            text;
+
+        const el=
+            document.getElementById(
+                "onyx-status-text"
+            );
+
+        if(el)
+            el.textContent=
+                config.status
+                    ? text
+                    : "";
+    }
+
+    function renderAdvanced(){
+
+        const palette=
+            document.getElementById(
+                "onyx-palette"
+            );
+
+        if(palette){
+
+            palette.innerHTML="";
+
+            [
+                "#00DC82",
+                "#5865F2",
+                "#9B59FF",
+                "#FF7A00",
+                "#FF375F",
+                "#00B8D9",
+                "#FFD60A",
+                "#FFFFFF"
+            ]
+            .forEach(
+                color=>{
+
+                    const item=
+                        document.createElement(
+                            "div"
+                        );
+
+                    item.className=
+                        "onyx-color";
+
+                    item.style.background=
+                        color;
+
+                    if(
+                        config.accent
+                            .toUpperCase()===
+                        color
+                    ){
+                        item.classList.add(
+                            "active"
+                        );
+                    }
+
+                    item.onclick=
+                        ()=>{
+                            config.accent=
+                                color;
+
+                            sync(
+                                "accent",
+                                color
+                            );
+
+                            document.documentElement.style.setProperty(
+                                "--onyx-accent",
+                                color
+                            );
+
+                            renderAdvanced();
+                        };
+
+                    palette.appendChild(
+                        item
+                    );
+                }
+            );
+        }
+
+        const styles=
+            document.getElementById(
+                "onyx-styles"
+            );
+
+        if(styles){
+
+            styles.innerHTML="";
+
+            [
+                "default",
+                "minimal",
+                "compact",
+                "native"
+            ]
+            .forEach(
+                value=>{
+
+                    const item=
+                        document.createElement(
+                            "div"
+                        );
+
+                    item.className=
+                        "onyx-style";
+
+                    if(
+                        config.style===
+                        value
+                    ){
+                        item.classList.add(
+                            "active"
+                        );
+                    }
+
+                    item.textContent=
+                        value[0].toUpperCase()+
+                        value.slice(1);
+
+                    item.onclick=
+                        ()=>{
+                            config.style=
+                                value;
+
+                            sync(
+                                "style",
+                                value
+                            );
+
+                            document
+                                .querySelectorAll(
+                                    ".tg-msg-trans"
+                                )
+                                .forEach(
+                                    applyMessageStyle
+                                );
+
+                            renderAdvanced();
+                        };
+
+                    styles.appendChild(
+                        item
+                    );
+                }
+            );
+        }
+
+        const targetInput=
+            document.getElementById(
+                "onyx-multi-targets"
+            );
+
+        if(targetInput){
+
+            targetInput.value=
+                config.multiTargets
+                    .join(",");
+        }
+
+        const rate=
+            document.getElementById(
+                "onyx-tts-rate"
+            );
+
+        if(rate){
+
+            rate.value=
+                config.ttsRate;
+
+            rate.oninput=
+                e=>{
+
+                    config.ttsRate=
+                        Number(
+                            e.target.value
+                        );
+
+                    sync(
+                        "ttsRate",
+                        config.ttsRate
+                    );
+
+                    document.getElementById(
+                        "onyx-rate"
+                    ).textContent=
+                        config.ttsRate
+                            .toFixed(1)+"x";
+                };
+        }
+
+        const volume=
+            document.getElementById(
+                "onyx-tts-volume"
+            );
+
+        if(volume){
+
+            volume.value=
+                config.ttsVolume;
+
+            volume.oninput=
+                e=>{
+
+                    config.ttsVolume=
+                        Number(
+                            e.target.value
+                        );
+
+                    sync(
+                        "ttsVolume",
+                        config.ttsVolume
+                    );
+
+                    document.getElementById(
+                        "onyx-volume"
+                    ).textContent=
+                        Math.round(
+                            config.ttsVolume*
+                            100
+                        )+"%";
+                };
+        }
+
+        const stats=
+            document.getElementById(
+                "onyx-stats"
+            );
+
+        if(stats){
+
+            const data=[
+                [
+                    state.stats.translations||0,
+                    "Translations"
+                ],
+                [
+                    state.stats.incoming||0,
+                    "Incoming"
+                ],
+                [
+                    state.stats.outgoing||0,
+                    "Outgoing"
+                ],
+                [
+                    state.stats.voice||0,
+                    "Voice"
+                ],
+                [
+                    state.stats.selected||0,
+                    "Selected"
+                ],
+                [
+                    state.stats.clipboard||0,
+                    "Clipboard"
+                ]
+            ];
+
+            stats.innerHTML=
+                data
+                    .map(
+                        x=>`
+                            <div class="onyx-stat">
+                                <div class="onyx-stat-num">
+                                    ${x[0]}
+                                </div>
+                                <div class="onyx-stat-label">
+                                    ${x[1]}
+                                </div>
+                            </div>
+                        `
+                    )
+                    .join("");
+        }
+
+        const favorites=
+            document.getElementById(
+                "onyx-favorites"
+            );
+
+        if(favorites){
+
+            favorites.innerHTML=
+                state.favorites.length
+                    ? state.favorites
+                        .slice(0,10)
+                        .map(
+                            (item,index)=>`
+                                <div
+                                    style="
+                                        padding:6px 0;
+                                        border-bottom:
+                                            1px solid
+                                            rgba(255,255,255,.04)
+                                    "
+                                >
+                                    <div
+                                        style="
+                                            font-size:8px;
+                                            color:#aaa
+                                        "
+                                    >
+                                        ${
+                                            escapeHTML(
+                                                item.original
+                                            )
+                                        }
+                                    </div>
+
+                                    <div
+                                        style="
+                                            font-size:9px;
+                                            color:#eee;
+                                            margin-top:2px
+                                        "
+                                    >
+                                        ${
+                                            escapeHTML(
+                                                item.translated
+                                            )
+                                        }
+                                    </div>
+
+                                    <button
+                                        class="onyx-mini"
+                                        data-fav="${index}"
+                                        style="margin-top:4px"
+                                    >
+                                        Copy
+                                    </button>
+                                </div>
+                            `
+                        )
+                        .join("")
+                    :`
+                        <div
+                            class="onyx-small"
+                        >
+                            No favorites yet.
+                        </div>
+                    `;
+
+            favorites
+                .querySelectorAll(
+                    "[data-fav]"
+                )
+                .forEach(
+                    btn=>{
+                        btn.onclick=
+                            ()=>{
+                                navigator.clipboard?.writeText(
+                                    state.favorites[
+                                        Number(
+                                            btn.dataset.fav
+                                        )
+                                    ].translated
+                                );
+                            };
+                    }
+                );
+        }
+
+        const users=
+            document.getElementById(
+                "onyx-users"
+            );
+
+        if(users){
+
+            const entries=
+                Object.entries(
+                    state.users
+                );
+
+            users.innerHTML=
+                entries.length
+                    ? entries
+                        .slice(0,15)
+                        .map(
+                            ([user,lang])=>`
+                                <div
+                                    style="
+                                        display:flex;
+                                        justify-content:space-between;
+                                        font-size:8px;
+                                        padding:5px 0;
+                                        border-bottom:
+                                            1px solid
+                                            rgba(255,255,255,.035)
+                                    "
+                                >
+                                    <span
+                                        style="color:#bbb"
+                                    >
+                                        ${escapeHTML(user)}
+                                    </span>
+
+                                    <span
+                                        style="color:var(--onyx-accent)"
+                                    >
+                                        ${escapeHTML(
+                                            LANGUAGES[lang]||
+                                            lang
+                                        )}
+                                    </span>
+                                </div>
+                            `
+                        )
+                        .join("")
+                    :`
+                        <div class="onyx-small">
+                            No detected languages yet.
+                        </div>
+                    `;
+        }
+    }
+
+    function renderHistory(){
+
+        const box=
+            document.getElementById(
+                "onyx-history-list"
+            );
+
+        if(!box)
+            return;
+
+        if(
+            !state.history.length
+        ){
+
+            box.innerHTML=`
+                <div
+                    class="onyx-small"
+                    style="text-align:center;padding:20px"
+                >
+                    No translations yet.
+                </div>
+            `;
+
+            return;
+        }
+
+        box.innerHTML=
+            state.history
+                .slice(0,100)
+                .map(
+                    (item,index)=>`
+                        <div class="onyx-history-item">
+
+                            <div class="onyx-history-top">
+                                <span>
+                                    ${
+                                        escapeHTML(
+                                            LANGUAGES[item.source]||
+                                            item.source
+                                        )
+                                    }
+                                    →
+                                    ${
+                                        escapeHTML(
+                                            LANGUAGES[item.target]||
+                                            item.target
+                                        )
+                                    }
+                                </span>
+
+                                <span>
+                                    ${
+                                        new Date(
+                                            item.time
+                                        )
+                                        .toLocaleTimeString()
+                                    }
+                                </span>
+                            </div>
+
+                            <div class="onyx-history-src">
+                                ${
+                                    escapeHTML(
+                                        item.original
+                                    )
+                                }
+                            </div>
+
+                            <div class="onyx-history-dst">
+                                ${
+                                    escapeHTML(
+                                        item.translated
+                                    )
+                                }
+                            </div>
+
+                            <div
+                                style="
+                                    display:flex;
+                                    gap:4px;
+                                    margin-top:5px
+                                "
+                            >
+
+                                <button
+                                    class="onyx-mini"
+                                    data-copy="${index}"
+                                >
+                                    Copy
+                                </button>
+
+                                <button
+                                    class="onyx-mini"
+                                    data-favorite="${index}"
+                                >
+                                    Favorite
+                                </button>
+
+                            </div>
+
+                        </div>
+                    `
+                )
+                .join("");
+
+        box
+            .querySelectorAll(
+                "[data-copy]"
+            )
+            .forEach(
+                button=>{
+                    button.onclick=
+                        ()=>{
+                            navigator.clipboard?.writeText(
+                                state.history[
+                                    Number(
+                                        button.dataset.copy
+                                    )
+                                ].translated
+                            );
+                        };
+                }
+            );
+
+        box
+            .querySelectorAll(
+                "[data-favorite]"
+            )
+            .forEach(
+                button=>{
+                    button.onclick=
+                        ()=>{
+                            const item=
+                                state.history[
+                                    Number(
+                                        button.dataset.favorite
+                                    )
+                                ];
+
+                            favorite(
+                                item.original,
+                                item.translated,
+                                item.target
+                            );
+                        };
+                }
+            );
+    }
+
+    function escapeHTML(text){
+
+        return String(
+            text
+        ).replace(
+            /[&<>'"]/g,
+            char=>({
+                "&":"&amp;",
+                "<":"&lt;",
+                ">":"&gt;",
+                "'":"&#39;",
+                '"':"&quot;"
+            }[char])
+        );
+    }
+
+    /* =========================================================
+       PANEL
+       ========================================================= */
+
+    function showPage(name){
+
+        [
+            "main",
+            "about",
+            "advanced",
+            "history"
+        ]
+        .forEach(
+            page=>{
+
+                const el=
+                    document.getElementById(
+                        `onyx-page-${page}`
+                    );
+
+                if(!el)
+                    return;
+
+                el.classList.toggle(
+                    "onyx-hidden",
+                    page!==name
+                );
+            }
+        );
+    }
+
+    function togglePanel(force){
+
+        const panel=
+            document.getElementById(
+                "tg-master-panel"
+            );
+
+        if(!panel)
+            return;
+
+        panel.style.display=
+            typeof force==="boolean"
+                ? (
+                    force
+                        ? "block"
+                        : "none"
+                )
+                : (
+                    panel.style.display==="block"
+                        ? "none"
+                        : "block"
+                );
+    }
+
+    function createPanel(){
+
+        if(
+            document.getElementById(
+                "tg-master-panel"
+            )
+        ){
+            return;
+        }
+
+        const root=
+            document.createElement(
+                "div"
+            );
+
+        root.id=
+            "onyx-root";
+
+        root.innerHTML=`
+
+            <div id="tg-master-panel">
+
+                <div class="onyx-header">
+
+                    <div class="onyx-brand">
+                        ${I.logo}
+                        <span>
+                            Onyx Translator
+                        </span>
+
+                        <span class="onyx-badge">
+                            v43.0
+                        </span>
+                    </div>
+
+                    <div
+                        class="onyx-close"
+                        id="onyx-close"
+                    >
+                        ✕
+                    </div>
+
+                </div>
+
+                <!-- MAIN -->
+
+                <div
+                    id="onyx-page-main"
+                    class="onyx-page"
+                >
+
+                    <div
+                        id="onyx-langbar"
+                        class="onyx-langbar"
+                    ></div>
+
+                    <button
+                        class="onyx-btn"
+                        id="onyx-settings-btn"
+                    >
+                        ${I.gear}
+                        <span>Settings</span>
+                        <span>▼</span>
+                    </button>
+
+                    <div
+                        id="onyx-settings"
+                        class="onyx-settings"
+                    ></div>
+
+                    <div
+                        class="onyx-grid2"
+                        style="margin-top:8px"
+                    >
+
+                        <button
+                            class="onyx-btn"
+                            id="onyx-history-btn"
+                        >
+                            ${I.history}
+                            History
+                        </button>
+
+                        <button
+                            class="onyx-btn"
+                            id="onyx-advanced-btn"
+                        >
+                            ${I.gear}
+                            Advanced
+                        </button>
+
+                    </div>
+
+                    <button
+                        class="onyx-btn"
+                        id="onyx-clipboard-btn"
+                        style="margin-top:6px"
+                    >
+                        ${I.clipboard}
+                        Translate Clipboard
+                    </button>
+
+                    <div
+                        class="onyx-status"
+                        id="onyx-status"
+                    >
+                        <span class="onyx-dot"></span>
+                        <span id="onyx-status-text">
+                            Ready
+                        </span>
+                    </div>
+
+                    <div class="onyx-footer">
+                        Developed by
+                        <a
+                            href="#"
+                            class="onyx-dev"
+                            id="onyx-about-link"
+                        >
+                            Fer3on_Mod
+                        </a>
+                    </div>
+
+                </div>
+
+                <!-- ABOUT -->
+
+                <div
+                    id="onyx-page-about"
+                    class="onyx-page onyx-hidden"
+                >
+
+                    <div
+                        class="onyx-subheader"
+                    >
+
+                        <button
+                            class="onyx-back"
+                            id="onyx-about-back"
+                        >
+                            ${I.back}
+                        </button>
+
+                        <div class="onyx-title">
+                            Developer
+                        </div>
+
+                        <div style="width:30px"></div>
+
+                    </div>
+
+                    <div
+                        class="onyx-about-brand"
+                    >
+
+                        <div class="onyx-about-logo">
+                            ${I.logo}
+                        </div>
+
+                        <div class="onyx-about-name">
+                            ONYX TRANSLATOR
+                        </div>
+
+                        <div class="onyx-about-sub">
+                            Translation made simple.
+                        </div>
+
+                        <div
+                            style="
+                                color:#aaa;
+                                font-size:9px;
+                                margin-top:7px
+                            "
+                        >
+                            Developed by
+                            <strong
+                                style="
+                                    color:var(--onyx-accent)
+                                "
+                            >
+                                Fer3on_Mod
+                            </strong>
+                        </div>
+
+                    </div>
+
+                    <div
+                        class="onyx-social-list"
+                    >
+
+                        <a
+                            class="onyx-social tg-card"
+                            href="https://t.me/Fer3on_Mod"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+
+                            <div class="onyx-social-icon">
+                                ${I.telegram}
+                            </div>
+
+                            <div class="onyx-social-main">
+                                <div class="onyx-social-title">
+                                    Telegram
+                                </div>
+
+                                <div class="onyx-social-handle">
+                                    @Fer3on_Mod
+                                </div>
+                            </div>
+
+                            <div class="onyx-social-arrow">
+                                ↗
+                            </div>
+
+                        </a>
+
+                        <a
+                            class="onyx-social yt-card"
+                            href="https://www.youtube.com/@Fer3onOS"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+
+                            <div class="onyx-social-icon">
+                                ${I.youtube}
+                            </div>
+
+                            <div class="onyx-social-main">
+                                <div class="onyx-social-title">
+                                    YouTube
+                                </div>
+
+                                <div class="onyx-social-handle">
+                                    𝑭ℯꝛ𝟹oƞ™ - YouTube
+                                </div>
+                            </div>
+
+                            <div class="onyx-social-arrow">
+                                ↗
+                            </div>
+
+                        </a>
+
+                        <a
+                            class="onyx-social dc-card"
+                            href="https://discord.gg/Ng9hbb69t8"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+
+                            <div class="onyx-social-icon">
+                                ${I.discord}
+                            </div>
+
+                            <div class="onyx-social-main">
+                                <div class="onyx-social-title">
+                                    Discord Server
+                                </div>
+
+                                <div class="onyx-social-handle">
+                                    Join the Onyx community
+                                </div>
+                            </div>
+
+                            <div class="onyx-social-arrow">
+                                ↗
+                            </div>
+
+                        </a>
+
+                    </div>
+
+                </div>
+
+                <!-- ADVANCED -->
+
+                <div
+                    id="onyx-page-advanced"
+                    class="onyx-page onyx-hidden"
+                >
+
+                    <div class="onyx-subheader">
+
+                        <button
+                            class="onyx-back"
+                            id="onyx-advanced-back"
+                        >
+                            ${I.back}
+                        </button>
+
+                        <div class="onyx-title">
+                            Advanced
+                        </div>
+
+                        <div style="width:30px"></div>
+
+                    </div>
+
+                    <div class="onyx-card">
+
+                        <div class="onyx-card-title">
+                            Accent Color
+                        </div>
+
+                        <div
+                            class="onyx-palette"
+                            id="onyx-palette"
+                        ></div>
+
+                    </div>
+
+                    <div class="onyx-card">
+
+                        <div class="onyx-card-title">
+                            Translation Style
+                        </div>
+
+                        <div
+                            class="onyx-style-grid"
+                            id="onyx-styles"
+                        ></div>
+
+                    </div>
+
+                    <div class="onyx-card">
+
+                        <div class="onyx-card-title">
+                            Multi-Translation
+                        </div>
+
+                        <div class="onyx-small">
+                            Enter language codes separated by commas.
+                            Maximum 5.
+                        </div>
+
+                        <div
+                            style="
+                                display:flex;
+                                gap:5px;
+                                margin-top:6px
+                            "
+                        >
+
+                            <input
+                                class="onyx-input"
+                                id="onyx-multi-targets"
+                                placeholder="ar,en,es"
+                            >
+
+                            <button
+                                class="onyx-mini"
+                                id="onyx-multi-save"
+                            >
+                                Save
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                    <div class="onyx-card">
+
+                        <div class="onyx-card-title">
+                            Voice
+                        </div>
+
+                        <div
+                            style="
+                                display:grid;
+                                grid-template-columns:auto 1fr auto;
+                                gap:5px;
+                                align-items:center
+                            "
+                        >
+
+                            <span class="onyx-small">
+                                Speed
+                            </span>
+
+                            <input
+                                id="onyx-tts-rate"
+                                type="range"
+                                min=".5"
+                                max="1.5"
+                                step=".1"
+                            >
+
+                            <span
+                                id="onyx-rate"
+                                class="onyx-small"
+                            >
+                                ${config.ttsRate}x
+                            </span>
+
+                        </div>
+
+                        <div
+                            style="
+                                display:grid;
+                                grid-template-columns:auto 1fr auto;
+                                gap:5px;
+                                align-items:center;
+                                margin-top:5px
+                            "
+                        >
+
+                            <span class="onyx-small">
+                                Volume
+                            </span>
+
+                            <input
+                                id="onyx-tts-volume"
+                                type="range"
+                                min="0"
+                                max="1"
+                                step=".05"
+                            >
+
+                            <span
+                                id="onyx-volume"
+                                class="onyx-small"
+                            >
+                                ${Math.round(
+                                    config.ttsVolume*100
+                                )}%
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                    <div class="onyx-card">
+
+                        <div class="onyx-card-title">
+                            Statistics
+                        </div>
+
+                        <div
+                            id="onyx-stats"
+                            class="onyx-stat-grid"
+                        ></div>
+
+                        <button
+                            class="onyx-mini"
+                            id="onyx-reset-stats"
+                            style="
+                                width:100%;
+                                margin-top:6px
+                            "
+                        >
+                            Reset statistics
+                        </button>
+
+                    </div>
+
+                    <div class="onyx-card">
+
+                        <div class="onyx-card-title">
+                            Favorites
+                        </div>
+
+                        <div
+                            id="onyx-favorites"
+                        ></div>
+
+                    </div>
+
+                    <div class="onyx-card">
+
+                        <div class="onyx-card-title">
+                            Detected User Languages
+                        </div>
+
+                        <div
+                            id="onyx-users"
+                        ></div>
+
+                    </div>
+
+                </div>
+
+                <!-- HISTORY -->
+
+                <div
+                    id="onyx-page-history"
+                    class="onyx-page onyx-hidden"
+                >
+
+                    <div class="onyx-subheader">
+
+                        <button
+                            class="onyx-back"
+                            id="onyx-history-back"
+                        >
+                            ${I.back}
+                        </button>
+
+                        <div class="onyx-title">
+                            History
+                        </div>
+
+                        <button
+                            class="onyx-mini"
+                            id="onyx-clear-history"
+                        >
+                            Clear
+                        </button>
+
+                    </div>
+
+                    <div
+                        id="onyx-history-list"
+                        class="onyx-history"
+                    ></div>
+
+                </div>
+
+            </div>
+
+            <div
+                id="onyx-floating-toggle"
+                title="Drag to move / Click to open"
+            >
+                ${I.logo}
+            </div>
+
+        `;
+
+        document.body.appendChild(
+            root
+        );
+
+        wireUI();
+
+        renderLangBar();
+
+        renderSettings();
+
+        renderAdvanced();
+
+        selectionPopup();
+    }
+
+    function renderLangBar(){
+
+        const bar=
+            document.getElementById(
+                "onyx-langbar"
+            );
+
+        if(!bar)
+            return;
+
+        bar.innerHTML="";
+
+        bar.appendChild(
+            dropdown(
+                "read",
+                config.read
+            )
+        );
+
+        const swap=
+            document.createElement(
+                "div"
+            );
+
+        swap.className=
+            "onyx-swap";
+
+        swap.textContent=
+            "➤";
+
+        swap.onclick=
+            ()=>{
+
+                const temp=
+                    config.read;
+
+                config.read=
+                    config.write;
+
+                config.write=
+                    temp;
+
+                sync(
+                    "read",
+                    config.read
+                );
+
+                sync(
+                    "write",
+                    config.write
+                );
+
+                refreshTranslations();
+
+                renderLangBar();
+            };
+
+        bar.appendChild(
+            swap
+        );
+
+        bar.appendChild(
+            dropdown(
+                "write",
+                config.write
+            )
+        );
+    }
+
+    function renderSettings(){
+
+        const box=
+            document.getElementById(
+                "onyx-settings"
+            );
+
+        if(!box)
+            return;
+
+        box.innerHTML="";
+
+        box.appendChild(
+            setting(
+                I.translate,
+                "Instant Translation",
+                "Translate received messages",
+                config.enabled,
+                value=>{
+                    config.enabled=
+                        value;
+
+                    sync(
+                        "enabled",
+                        value
+                    );
+
+                    if(!value)
+                        refreshTranslations();
+                }
+            )
+        );
+
+        box.appendChild(
+            setting(
+                I.shield,
+                "Smart Filter",
+                "Ignore native language",
+                config.smart,
+                value=>{
+                    config.smart=
+                        value;
+
+                    sync(
+                        "smart",
+                        value
+                    );
+                }
+            )
+        );
+
+        box.appendChild(
+            setting(
+                I.bolt||
+                I.translate,
+                "Live Typing",
+                "Translate while you type",
+                config.live,
+                value=>{
+                    config.live=
+                        value;
+
+                    sync(
+                        "live",
+                        value
+                    );
+                }
+            )
+        );
+
+        box.appendChild(
+            setting(
+                I.history,
+                "Typer Effect",
+                "Simulate human typing",
+                config.typing,
+                value=>{
+                    config.typing=
+                        value;
+
+                    sync(
+                        "typing",
+                        value
+                    );
+                }
+            )
+        );
+
+        box.appendChild(
+            setting(
+                I.shield,
+                "Smart Protection",
+                "Protect links, mentions and code",
+                config.protection,
+                value=>{
+                    config.protection=
+                        value;
+
+                    sync(
+                        "protection",
+                        value
+                    );
+
+                    state.cache.clear();
+                }
+            )
+        );
+
+        box.appendChild(
+            setting(
+                I.search,
+                "Quick Selection Translate",
+                "Translate selected text",
+                config.quickSelect,
+                value=>{
+                    config.quickSelect=
+                        value;
+
+                    sync(
+                        "quickSelect",
+                        value
+                    );
+                }
+            )
+        );
+
+        box.appendChild(
+            setting(
+                I.history,
+                "Translation History",
+                "Keep the latest 100 translations",
+                config.history,
+                value=>{
+                    config.history=
+                        value;
+
+                    sync(
+                        "history",
+                        value
+                    );
+                }
+            )
+        );
+
+        box.appendChild(
+            setting(
+                I.bolt||
+                I.translate,
+                "Statistics",
+                "Track usage locally",
+                config.stats,
+                value=>{
+                    config.stats=
+                        value;
+
+                    sync(
+                        "stats",
+                        value
+                    );
+                }
+            )
+        );
+
+        box.appendChild(
+            setting(
+                I.search,
+                "User Language Memory",
+                "Remember detected languages",
+                config.userMemory,
+                value=>{
+                    config.userMemory=
+                        value;
+
+                    sync(
+                        "userMemory",
+                        value
+                    );
+                }
+            )
+        );
+
+        box.appendChild(
+            setting(
+                I.translate,
+                "Multi-Translation",
+                "Show extra translated languages",
+                config.multi,
+                value=>{
+                    config.multi=
+                        value;
+
+                    sync(
+                        "multi",
+                        value
+                    );
+
+                    refreshTranslations();
+                }
+            )
+        );
+    }
+
+    function wireUI(){
+
+        document.getElementById(
+            "onyx-close"
+        ).onclick=
+            ()=>togglePanel(false);
+
+        document.getElementById(
+            "onyx-settings-btn"
+        ).onclick=
+            ()=>{
+                document.getElementById(
+                    "onyx-settings"
+                ).classList.toggle(
+                    "onyx-hidden"
+                );
+            };
+
+        document.getElementById(
+            "onyx-about-link"
+        ).onclick=
+            e=>{
+                e.preventDefault();
+                showPage("about");
+            };
+
+        document.getElementById(
+            "onyx-about-back"
+        ).onclick=
+            ()=>showPage("main");
+
+        document.getElementById(
+            "onyx-advanced-btn"
+        ).onclick=
+            ()=>{
+                showPage("advanced");
+                renderAdvanced();
+            };
+
+        document.getElementById(
+            "onyx-advanced-back"
+        ).onclick=
+            ()=>showPage("main");
+
+        document.getElementById(
+            "onyx-history-btn"
+        ).onclick=
+            ()=>{
+                showPage("history");
+                renderHistory();
+            };
+
+        document.getElementById(
+            "onyx-history-back"
+        ).onclick=
+            ()=>showPage("main");
+
+        document.getElementById(
+            "onyx-clear-history"
+        ).onclick=
+            ()=>{
+                state.history=[];
+                save(
+                    "akram_history",
+                    []
+                );
+                renderHistory();
+            };
+
+        document.getElementById(
+            "onyx-clipboard-btn"
+        ).onclick=
+            translateClipboard;
+
+        document.getElementById(
+            "onyx-multi-save"
+        ).onclick=
+            ()=>{
+
+                const value=
+                    document.getElementById(
+                        "onyx-multi-targets"
+                    )
+                    .value;
+
+                const list=
+                    value
+                        .split(",")
+                        .map(
+                            x=>x.trim()
+                        )
+                        .filter(
+                            x=>LANGUAGES[x]
+                        )
+                        .slice(0,5);
+
+                if(list.length){
+
+                    config.multiTargets=
+                        list;
+
+                    sync(
+                        "multiTargets",
+                        list
+                    );
+
+                    refreshTranslations();
+                }
+            };
+
+        document.getElementById(
+            "onyx-reset-stats"
+        ).onclick=
+            ()=>{
+
+                state.stats={
+                    translations:0,
+                    incoming:0,
+                    outgoing:0,
+                    voice:0,
+                    selected:0,
+                    clipboard:0
+                };
+
+                save(
+                    "akram_stats",
+                    state.stats
+                );
+
+                renderAdvanced();
+            };
+
+        /* FLOATING BUTTON */
+
+        const floating=
+            document.getElementById(
+                "onyx-floating-toggle"
+            );
+
+        let dragging=false;
+
+        let startX=0;
+        let startY=0;
+
+        let initialX=0;
+        let initialY=0;
+
+        floating.onmousedown=
+            e=>{
+
+                dragging=false;
+
+                startX=
+                    e.clientX;
+
+                startY=
+                    e.clientY;
+
+                const rect=
+                    floating.getBoundingClientRect();
+
+                initialX=
+                    rect.left;
+
+                initialY=
+                    rect.top;
+
+                const move=
+                    event=>{
+
+                        const dx=
+                            event.clientX-
+                            startX;
+
+                        const dy=
+                            event.clientY-
+                            startY;
+
+                        if(
+                            Math.abs(dx)>3 ||
+                            Math.abs(dy)>3
+                        ){
+                            dragging=true;
+                        }
+
+                        if(dragging){
+
+                            floating.style.left=
+                                `${initialX+dx}px`;
+
+                            floating.style.top=
+                                `${initialY+dy}px`;
+
+                            floating.style.right=
+                                "auto";
+
+                            floating.style.bottom=
+                                "auto";
+                        }
+                    };
+
+                const up=
+                    ()=>{
+                        document.removeEventListener(
+                            "mousemove",
+                            move
+                        );
+
+                        document.removeEventListener(
+                            "mouseup",
+                            up
+                        );
+
+                        if(!dragging){
+                            togglePanel();
+                        }
+                    };
+
+                document.addEventListener(
+                    "mousemove",
+                    move
+                );
+
+                document.addEventListener(
+                    "mouseup",
+                    up
+                );
+            };
+    }
+
+    /* =========================================================
+       DISCORD COMPOSER BUTTONS
+       ========================================================= */
+
+    function setupInputButtons(){
+
+        const input=
+            getInput();
+
+        if(!input)
+            return;
+
+        const target=
+            input.closest(
+                ".input-message-container"
+            ) ||
+            input.closest(
+                "form"
+            );
+
+        if(!target)
+            return;
+
+        const buttons=
+            target.querySelector(
+                'div[class*="buttons_"]'
+            ) ||
+            target.querySelector(
+                'div[class*="buttonContainer"]'
+            );
+
+        if(!buttons)
+            return;
+
+        if(
+            !buttons.querySelector(
+                ".tg-input-actions"
+            )
+        ){
+
+            const wrap=
+                document.createElement(
+                    "div"
+                );
+
+            wrap.className=
+                "tg-input-actions";
+
+            const makeButton=
+                (
+                    id,
+                    title,
+                    icon,
+                    action
+                )=>{
+
+                    const button=
+                        document.createElement(
+                            "button"
+                        );
+
+                    button.type=
+                        "button";
+
+                    button.id=
+                        id;
+
+                    button.title=
+                        title;
+
+                    button.className=
+                        "tg-action-btn";
+
+                    button.innerHTML=
+                        icon;
+
+                    button.onmousedown=
+                        e=>
+                            e.preventDefault();
+
+                    button.onclick=
+                        e=>{
+
+                            e.preventDefault();
+
+                            e.stopPropagation();
+
+                            action();
+                        };
+
+                    return button;
+                };
+
+            const mic=
+                makeButton(
+                    "tg-mic-btn",
+                    "Voice Input",
+                    I.mic,
+                    startDictation
+                );
+
+            const translateButton=
+                makeButton(
+                    "tg-write-btn",
+                    "Translate",
+                    I.translate,
+                    handleWrite
+                );
+
+            wrap.append(
+                mic,
+                translateButton
+            );
+
+            buttons.appendChild(
+                wrap
+            );
+        }
+
+        if(
+            !input.dataset.onyxObserved
+        ){
+
+            input.dataset.onyxObserved=
+                "1";
+
+            input.addEventListener(
+                "input",
+                ()=>{
+
+                    if(!config.live)
+                        return;
+
+                    clearTimeout(
+                        state.typingTimer
+                    );
+
+                    state.typingTimer=
+                        setTimeout(
+                            ()=>{
+                                if(
+                                    getInputText(
+                                        input
+                                    ).length>2
+                                ){
+                                    handleWrite();
+                                }
+                            },
+                            1500
+                        );
+                }
+            );
+        }
+    }
+
+    /* =========================================================
+       KEYBOARD
+       ========================================================= */
+
+    document.addEventListener(
+        "keydown",
+        e=>{
+
+            if(
+                e.altKey &&
+                e.key.toLowerCase()==="t"
+            ){
+
+                e.preventDefault();
+
+                handleWrite();
+            }
+        }
+    );
+
+    /* =========================================================
+       DROPDOWN CLOSE
+       ========================================================= */
+
+    document.addEventListener(
+        "click",
+        ()=>{
+            document
+                .querySelectorAll(
+                    ".onyx-dropdown"
+                )
+                .forEach(
+                    x=>
+                        x.classList.remove(
+                            "show"
+                        )
+                );
+        },
+        true
+    );
+
+    /* =========================================================
+       BOOT
+       ========================================================= */
+
+    function boot(){
+
+        if(!document.body)
+            return;
+
+        createPanel();
+
+        setupInputButtons();
+
+        scanChat();
+
+        const observer=
+            new MutationObserver(
+                ()=>{
+
+                    try{
+                        setupInputButtons();
+                    }catch{}
+
+                    try{
+                        scanChat();
+                    }catch{}
+
+                    if(
+                        !document.getElementById(
+                            "tg-master-panel"
+                        )
+                    ){
+
+                        try{
+                            createPanel();
+                        }catch{}
+                    }
+                }
+            );
+
+        observer.observe(
+            document.body,
+            {
+                childList:true,
+                subtree:true
+            }
+        );
+
+        setInterval(
+            ()=>{
+                try{
+                    setupInputButtons();
+                }catch{}
+
+                try{
+                    scanChat();
+                }catch{}
+            },
+            2000
+        );
+
+        setInterval(
+            ()=>{
+                state.cache.clear();
+            },
+            600000
+        );
+
+        console.log(
+            "%c[Onyx Translator] PRO v43.0 loaded",
+            "color:#00DC82;font-weight:800"
+        );
+    }
+
+    if(
+        document.readyState==="loading"
+    ){
+
+        document.addEventListener(
+            "DOMContentLoaded",
+            boot,
+            { once:true }
+        );
+
+    }else{
+
+        boot();
+    }
+
+})();
