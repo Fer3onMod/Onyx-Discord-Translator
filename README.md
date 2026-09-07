@@ -1,1 +1,0 @@
-# Onyx-Discord-Translator
